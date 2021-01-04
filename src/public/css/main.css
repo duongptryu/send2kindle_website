@@ -1,0 +1,80 @@
+.options{
+    border: 1px dashed gray;
+    padding: 20px;
+    margin-bottom: 20px;
+    width: 600px;
+    position: relative;
+    left: 25%;
+}
+
+.options p{
+    font-size: 30px;
+}
+ .abc{
+     border-top: 1px groove gray;
+     padding-top: 20px;
+ }
+
+ .cus-container{
+     margin-top: 80px;
+ }
+
+ .cus-container h2{
+    font-size: 50px;
+    text-align: center;
+    margin-bottom: 50px;
+ }
+
+ .button-result{
+    background-color: rgb(255, 255, 0);
+    margin-left: 45%;
+    padding: 10px;
+    border-radius: 5px;
+    color: black;
+    text-decoration: none
+ }
+
+ .inputDomain{
+    margin-left: 100px;
+    margin-bottom: 60px;
+ }
+
+ .loading{
+    margin-left: 400px;
+    margin-bottom: 60px;
+    width: 300px;
+    text-align: center;
+ }
+ .loading em{
+     font-size: 11px;
+ }
+
+ .scrollBar{
+    overflow-y: scroll;
+    height: 500px;
+ }
+ .nut{
+     padding-top: 8px;
+ }
+
+ .error{
+     width: 300px;
+     margin-left: 40%;
+ }
+
+ .button-new-scan{
+    margin-left: 47%;
+    margin-bottom: 20px;
+ }
+
+ .scan-wait{
+    border: 1px dashed gray;
+    padding: 20px;
+    margin-bottom: 20px;
+    width: 600px;
+    position: relative;
+    left: 25%;
+ }
+ .scan-wait b{
+     font-size: 40px;
+ }
