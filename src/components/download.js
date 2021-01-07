@@ -3,7 +3,6 @@ import React, { useEffect, useState } from 'react'
 
 export const Download: React.FC = (props) => {
     const list = props.result
-    console.log(list)
   // set up local state for generating the download link
   const [downloadLink, setDownloadLink] = useState('')
 

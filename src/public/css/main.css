@@ -78,3 +78,10 @@
  .scan-wait b{
      font-size: 40px;
  }
+
+ .result-lable{
+    font-size: 30px;
+    margin-left: 280px;
+    border-bottom: 2px groove rgb(157, 28, 161);
+    width: 590px;
+ }

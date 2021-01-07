@@ -1,0 +1,5 @@
+fastapi
+sublist3r
+argparse
+dnspython
+requests

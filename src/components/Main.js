@@ -36,7 +36,6 @@ class Main extends React.Component {
         { name: "Passive Dns", status: true, id: "passivedns" },
       ],
       result: [],
-      checkResult: false,
       error: "",
     };
 
@@ -152,7 +151,7 @@ class Main extends React.Component {
       error: "",
     });
     const domain = this.state.domain.toLowerCase();
-    const portQuery = this.state.port ? "&port=" + this.state.port : "";
+    const portQuery = this.state.port ? "&ports=" + this.state.port : "";
     const bruteForceQuery = "?bruteforce=" + this.state.bruteForce;
 
     let engineQuery = "";
@@ -196,11 +195,10 @@ class Main extends React.Component {
         error: data.Error,
       });
     } else if (status_code === 200) {
-      if(data.result !== 'No result'){
+      console.log(data);
+      if (data.result.length !== 0) {
         this.setState({
-          port: data.port,
           result: [...data.result],
-          checkResult: true,
           check: {
             option: false,
             loading: false,
@@ -209,10 +207,8 @@ class Main extends React.Component {
           },
           error: "",
         });
-      }else{
+      } else {
         this.setState({
-          port: data.port,
-          result: [...data.result],
           check: {
             option: false,
             loading: false,
@@ -254,7 +250,9 @@ class Main extends React.Component {
             </div>
           )}
           {this.state.error.length > 0 && (
-            <Alert color="warning" className="error">{this.state.error}</Alert>
+            <Alert color="warning" className="error">
+              {this.state.error}
+            </Alert>
           )}
           {loading && (
             <div>
@@ -283,7 +281,10 @@ class Main extends React.Component {
               >
                 New scan
               </Button>
-              <Result result={this.state.result} port={this.state.port} checkResult={this.state.checkResult}/>
+              <b>
+                <p className="result-lable">🆁🅴🆂🆄🅻🆃: Found {this.state.result.length} result </p>
+              </b>
+              <Result result={this.state.result} />
               <Download result={this.state.result} className="button-result" />
             </div>
           )}

@@ -1,35 +1,32 @@
+#!/usr/bin/env python
+
 from fastapi import FastAPI, status, Response
 from typing import Optional
 from fastapi.middleware.cors import CORSMiddleware
+
 import re
-
-
+import pandas as pd
 import sublist3r
+
+import config as cfg
+import portScan as ps
 
 
 app=FastAPI()
 
-
-origins = [
-    "http://localhost:3000",
-]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=False,
-    allow_methods=["GET"],
-    allow_headers=["*"],
+    allow_origins=cfg.setup_CORS['origin'],
+    allow_credentials=cfg.setup_CORS['allow_credentials'],
+    allow_methods=cfg.setup_CORS['allow_methods'],
+    allow_headers=cfg.setup_CORS['allow_headers'],
 )
 
-# @app.get("/", status_code=status.HTTP_404_NOT_FOUND)
-# def notFound():
-#     return {"Error": "Not Found"}
+
 
 @app.get("/{domain}", status_code=status.HTTP_200_OK)
-async def check(res: Response, domain: str, port: Optional[str]=None, bruteforce: Optional[bool]=False, engines: Optional[str]=None ):
+async def check(res: Response, domain: str, ports: Optional[str]=None, bruteforce: Optional[bool]=False, engines: Optional[str]=None ):
 
-    
     if checkDomain(domain) == False:
         res.status_code = status.HTTP_400_BAD_REQUEST
         return {"Error": "Please input valid domain"}
@@ -40,18 +37,32 @@ async def check(res: Response, domain: str, port: Optional[str]=None, bruteforce
             return {"Error": "Bad Input"}
 
     try:
-        subdomain = await scan(domain, port, bruteforce, engines)
+        subdomains = scan(domain, ports, bruteforce, engines)
     except expression as identifier:
         res.status_code = status.HTTP_504_GATEWAY_TIMEOUT   
         return {"Error": "Something error"}
-    # if port:
-    #     portScan(subdomain, port)
-    return {"result": "No result", "port":port} if len(subdomain) == 0 else {"result": subdomain, "port": port}
+
+    if ports:
+        ports = ports.split(',')
+        pscan = ps.portscan(subdomains, ports)
+        subListPort = pscan.run()   
+        if len(subListPort) > 0:
+            # writeFileExcel(subListPort)
+            return {"result": subListPort}
+        else:
+            return {"result": []}
+
+    if len(subdomains) == 0:
+        return {"result": []}
+    else:
+        new_subdomains = list(map(lambda subdomain: {"host": subdomain, 'port': None}, subdomains))
+        # writeFileExcel(new_subdomains)
+        return {"result": new_subdomains}
 
 
 
-async def scan(domain, port, bruteforce, engines):
-    subdomains = sublist3r.main(domain, 40, None, ports=port, silent=False, verbose= False, enable_bruteforce= bruteforce, engines=engines)
+def scan(domain, port, bruteforce, engines):
+    subdomains = sublist3r.main(domain, 40, None, ports=None, silent=False, verbose= False, enable_bruteforce= bruteforce, engines=engines)
     return subdomains
 
 
@@ -69,18 +80,9 @@ def checkEngine(engines):
             if n not in listEngine:
                 return False
 
-# def portScan(port, subdomains):
-#     openports = []
-#     for port in ports:
-#             try:
-#                 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-#                 s.settimeout(2)
-#                 result = s.connect_ex((host, int(port)))
-#                 if result == 0:
-#                     openports.append(port)
-#                 s.close()
-#             except Exception:
-#                 pass
-    
-#     print(openports)
-
+# def writeFileExcel(sublist):
+#     sublist_df = pd.DataFrame(sublist)
+#     writer = pd.ExcelWriter('mult_sheets_1.xlsx')
+#     sublsit_df.to_excel(writer, sheet_name='df_1', index=False)
+#     sublsit_df.to_excel(writer, sheet_name='df_2', index=False)
+#     sublsit_df.to_excel(writer, sheet_name='df_3', index=False)
