@@ -167,7 +167,7 @@ class Main extends React.Component {
     }
 
     const query =
-      "http://localhost:8000/api/" +
+      "/api/" +
       domain +
       bruteForceQuery +
       portQuery +
