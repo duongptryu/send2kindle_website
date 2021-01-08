@@ -1,15 +1,20 @@
 #!/usr/bin/env python
 
-from fastapi import FastAPI, status, Response
+from fastapi import FastAPI, status, Response, Request
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse
+
 from typing import Optional
 from fastapi.middleware.cors import CORSMiddleware
 
 import re
-import pandas as pd
+import threading
+import socket
+# import pandas as pd
 import sublist3r
 
 import config as cfg
-import portScan as ps
 
 
 app=FastAPI()
@@ -22,9 +27,20 @@ app.add_middleware(
     allow_headers=cfg.setup_CORS['allow_headers'],
 )
 
+app.mount("/static", StaticFiles(directory="../build/static"), name="static")
+
+templates = Jinja2Templates(directory="../build")
+
+# @app.get("/test")
+# def test():
+#     pass
+
+@app.get("/", response_class=HTMLResponse)
+async def serve_spa(request: Request, ):
+    return templates.TemplateResponse("index.html", {"request": request})
 
 
-@app.get("/{domain}", status_code=status.HTTP_200_OK)
+@app.get("/api/{domain}", status_code=status.HTTP_200_OK)
 async def check(res: Response, domain: str, ports: Optional[str]=None, bruteforce: Optional[bool]=False, engines: Optional[str]=None ):
 
     if checkDomain(domain) == False:
@@ -44,7 +60,7 @@ async def check(res: Response, domain: str, ports: Optional[str]=None, bruteforc
 
     if ports:
         ports = ports.split(',')
-        pscan = ps.portscan(subdomains, ports)
+        pscan = portscan(subdomains, ports)
         subListPort = pscan.run()   
         if len(subListPort) > 0:
             # writeFileExcel(subListPort)
@@ -80,9 +96,35 @@ def checkEngine(engines):
             if n not in listEngine:
                 return False
 
-# def writeFileExcel(sublist):
-#     sublist_df = pd.DataFrame(sublist)
-#     writer = pd.ExcelWriter('mult_sheets_1.xlsx')
-#     sublsit_df.to_excel(writer, sheet_name='df_1', index=False)
-#     sublsit_df.to_excel(writer, sheet_name='df_2', index=False)
-#     sublsit_df.to_excel(writer, sheet_name='df_3', index=False)
+
+
+class portscan():
+    def __init__(self, subdomains, ports):
+        self.subdomains = subdomains
+        self.ports = ports
+        self.lock = None
+        self.subList = []
+
+    def port_scan(self, host, ports):
+        openports = []
+        self.lock.acquire()
+        for port in ports:
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.settimeout(2)
+                result = s.connect_ex((host, int(port)))
+                if result == 0:
+                    openports.append(port)
+                s.close()
+            except Exception:
+                pass
+        self.lock.release()
+        if len(openports) > 0:
+            self.subList.append({"host": host, "port": port})
+
+    def run(self):
+        self.lock = threading.BoundedSemaphore(value=20)
+        for subdomain in self.subdomains:
+            t = threading.Thread(target=self.port_scan, args=(subdomain, self.ports))
+            t.start()
+        return self.subList
