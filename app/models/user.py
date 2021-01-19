@@ -37,7 +37,7 @@
 
 
 #===========================================================================================
-from db import Base
+from db.db import Base
 from sqlalchemy import Column, Integer, String
 from passlib.hash import bcrypt
 

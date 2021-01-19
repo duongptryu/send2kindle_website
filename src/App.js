@@ -30,7 +30,7 @@ class App extends React.Component {
         last_name: "",
       },
       error: "",
-      redirect: null
+      redirect: null,
     };
     this.signInHandle = this.signInHandle.bind(this);
     this.signInOnchange = this.signInOnchange.bind(this);
@@ -93,41 +93,52 @@ class App extends React.Component {
       return false;
     }
     let status = "";
-    const data = this.state.signIn;
+    const formData = new FormData()
+    formData.append("username", this.state.signIn.username)
+    formData.append("password", this.state.signIn.password)
+    // console.log(formData)
+    // const data = this.state.signIn;
     let result = await fetch("http://localhost:8000/api/token", {
       method: "POST",
       mode: "cors",
       credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(data),
+      // headers: {
+      //   "Content-Type": "application/json",
+      // },
+      // body: JSON.stringify(data),
+      body: formData
     })
       .then((res) => {
-        status = res.status
-        return res.json() 
+        status = res.status;
+        return res.json();
       })
       .catch((err) => {
-        status = err.status
-        return err.json() 
+        status = err.status;
+        return err.json();
       });
-    if(status === 200){
-      alert("Login success")
-      localStorage.setItem('token', result['access_token'])
-      window.location.href = "/"
-    }else{
-      console.log(result)
+    if (status === 200) {
+      alert("Login success");
+      localStorage.setItem("token", result["access_token"]);
+      window.location.href = "/";
+    } else {
+      console.log(result);
       this.setState({
-        error:result['detail']
-      })
+        error: result["detail"],
+      });
     }
   }
 
   async signUpHandle(e) {
-    console.log(this.state.signUp)
+    console.log(this.state.signUp);
     e.preventDefault();
     const info = this.state.signUp;
-    if (info.username.length === 0 || info.password.length === 0 || info.email.length === 0 || info.first_name.length === 0 || info.last_name.length === 0) {
+    if (
+      info.username.length === 0 ||
+      info.password.length === 0 ||
+      info.email.length === 0 ||
+      info.first_name.length === 0 ||
+      info.last_name.length === 0
+    ) {
       alert("Please complete input before submit");
       return false;
     }
@@ -143,26 +154,25 @@ class App extends React.Component {
       body: JSON.stringify(data),
     })
       .then((res) => {
-        status = res.status
-        return res.json() 
+        status = res.status;
+        return res.json();
       })
       .catch((err) => {
-        status = err.status
-        return err.json() 
+        status = err.status;
+        return err.json();
       });
-    if(status === 201){
-      alert(result['detail'])
-      window.location.href = "/sign-in"
-    }else{
-      console.log(result)
+    if (status === 201) {
+      alert(result["detail"]);
+      window.location.href = "/sign-in";
+    } else {
+      console.log(result);
       this.setState({
-        error:result['detail']
-      })
+        error: result["detail"],
+      });
     }
   }
 
   render() {
-    
     return (
       <Router>
         <div className="main">
@@ -174,7 +184,7 @@ class App extends React.Component {
                   <SignIn
                     signInClick={this.signInHandle}
                     onchange={this.signInOnchange}
-                    error = {this.state.error}
+                    error={this.state.error}
                   />
                 </Route>
                 <Route path="/guide/">

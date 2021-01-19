@@ -14,14 +14,18 @@ import threading
 import socket
 
 import sublist3r
-import config as cfg
+import core.config as cfg
 
-import schemas, models, auth
-from db import SessionLocal, engine
+from schemas.token import Token as SchemaToken
+from schemas.user import User as SchemaUser, UserCreate as SchemaUserCreate, UserLogin as SchemaUserLogin
+import models.user as modelUser
+import auth.auth as auth
+from db.db import SessionLocal, engine
+
 from typing import List
 from sqlalchemy.orm import Session
 
-models.Base.metadata.create_all(bind=engine)
+modelUser.Base.metadata.create_all(bind=engine)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/token")
 
@@ -83,20 +87,20 @@ def get_db():
         db.close()
 
 
-@app.get("/api/users", response_model=List[schemas.User])
+@app.get("/api/users", response_model=List[SchemaUser])
 def read_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
     users = auth.get_users(db, skip, limit)
     return users
 
 
-@app.get("/api/users/me", response_model=schemas.User)
+@app.get("/api/users/me", response_model=SchemaUser)
 def read_user(token:str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     user = auth.get_current_user(db, token=token)
     return user
 
 
 @app.post("/api/create-user", status_code=status.HTTP_201_CREATED)
-def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
+def create_user(user: SchemaUserCreate, db: Session = Depends(get_db)):
     db_user = auth.get_user_by_mail(db, email=user.email)
     if db_user:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
@@ -108,9 +112,12 @@ def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     auth.create_user(db, user=user)
     return {"detail": "Sign Up successful"}
 
+def read_input(username: str, password: str):
+    print(username)
 
-@app.post("/api/token")
-def login(res: Response, user: schemas.UserLogin, db: Session = Depends(get_db)):
+@app.post("/api/token", status_code=status.HTTP_200_OK)
+def login(res: Response, user: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    print(user)
     user = auth.authenticate_user(db, user.username, user.password)
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
@@ -119,7 +126,6 @@ def login(res: Response, user: schemas.UserLogin, db: Session = Depends(get_db))
     token = auth.generate_token(data = {"user_id": user.id, "username": user.username})
     res.set_cookie(key="token", value=token['access_token'])
     res.headers['Authorization'] = "Bearer " + token['access_token']
-    res.status_code = status.HTTP_200_OK
     return {"detail": "Login success", "access_token": token['access_token']}
 
 #+====================================================================================================

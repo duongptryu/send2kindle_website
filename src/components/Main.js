@@ -164,6 +164,12 @@ class Main extends React.Component {
       engineQuery = engineQuery.slice(0, -1);
       engineQuery = "&engines=" + engineQuery;
     }
+    let header = {}
+    if(localStorage.getItem("token")){
+      header = {
+        "Authorization": "Bearer " + localStorage.getItem("token")
+      }
+    }
 
     const query =
       "http://localhost:8000/api/" +
@@ -175,9 +181,7 @@ class Main extends React.Component {
     const data = await fetch(query, {
       method: "GET",
       mode: "cors",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: header,
     }).then((res) => {
       status_code = res.status;
       return res.json();

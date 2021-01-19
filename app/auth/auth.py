@@ -35,7 +35,11 @@
 
 #======================================================================================================
 from sqlalchemy.orm import Session
-import models, schemas
+
+from schemas.token import Token as SchemaToken
+from schemas.user import User as SchemaUser, UserCreate as SchemaUserCreate, UserLogin as SchemaUserLogin
+from models.user import User
+
 from passlib.hash import bcrypt
 from jose import JWTError, jwt
 from typing import Optional
@@ -58,23 +62,23 @@ def get_current_user(db: Session, token: str):
         username: str = payload.get("username")
     except JWTError:
         raise credentials_exception
-    user = db.query(models.User).filter(models.User.username == username).first()
+    user = db.query(User).filter(User.username == username).first()
     if not user:
         raise credentials_exception
     return user
 
 def get_user_by_mail(db: Session, email: str):
-    return db.query(models.User).filter(models.User.email == email).first()
+    return db.query(User).filter(User.email == email).first()
 
 def get_users(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(models.User).offset(skip).limit(limit).all()
+    return db.query(User).offset(skip).limit(limit).all()
 
 def get_user_by_username(db: Session, username: str):
-    return db.query(models.User).filter(models.User.username == username).first()
+    return db.query(User).filter(User.username == username).first()
 
-def create_user(db: Session, user: schemas.UserCreate):
+def create_user(db: Session, user: SchemaUserCreate):
     hashed_password = bcrypt.hash(user.password)
-    db_user = models.User(username=user.username,
+    db_user = User(username=user.username,
                           email=user.email,
                           password_hashed=hashed_password,
                           first_name=user.first_name,
