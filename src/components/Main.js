@@ -10,7 +10,6 @@ class Main extends React.Component {
   constructor(props) {
     super(props);
     this.elementInput = React.createRef();
-
     this.initalState = {
       check: {
         option: true,
@@ -167,7 +166,7 @@ class Main extends React.Component {
     }
 
     const query =
-      "/api/" +
+      "http://localhost:8000/api/" +
       domain +
       bruteForceQuery +
       portQuery +
@@ -182,9 +181,12 @@ class Main extends React.Component {
     }).then((res) => {
       status_code = res.status;
       return res.json();
+    }).catch(err => {
+      status_code = err.status
+      return err.json()
     });
 
-    if (status_code === 400 || status_code === 504) {
+    if (status_code === 408 || status_code === 503 || status_code=== 400) {
       this.setState({
         check: {
           option: true,
@@ -192,10 +194,9 @@ class Main extends React.Component {
           result: false,
           input: true,
         },
-        error: data.Error,
+        error: data['detail'],
       });
     } else if (status_code === 200) {
-      console.log(data);
       if (data.result.length !== 0) {
         this.setState({
           result: [...data.result],
@@ -218,6 +219,16 @@ class Main extends React.Component {
           error: "",
         });
       }
+    }else if (status_code === 401){
+      this.setState({
+        check: {
+          option: true,
+          loading: false,
+          result: false,
+          input: true,
+        },
+        error: "Please login to use this feature",
+      });
     }
   }
 

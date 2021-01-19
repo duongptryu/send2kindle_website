@@ -16,6 +16,7 @@ const NavBar = (props) => {
   const toggleNavbar = () => setCollapsed(!collapsed);
   return (
     <div>
+      {/* <Router> */}
       <Navbar color="faded" light>
         <NavbarBrand
           className="mr-auto text-primary"
@@ -27,6 +28,12 @@ const NavBar = (props) => {
         <Collapse isOpen={!collapsed} navbar>
           <Nav navbar>
             <NavItem>
+            <NavLink>
+                <Link to="/sign-in/">Sign In</Link>
+              </NavLink>
+              <NavLink>
+                <Link to="/sign-up/">Sign Up</Link>
+              </NavLink>
               <NavLink>
                 <Link to="/guide/">Guide</Link>
               </NavLink>
@@ -39,6 +46,7 @@ const NavBar = (props) => {
           </Nav>
         </Collapse>
       </Navbar>
+      {/* </Router> */}
       <hr></hr>
     </div>
   );
