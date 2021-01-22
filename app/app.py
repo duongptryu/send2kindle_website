@@ -1,31 +1,39 @@
 #!/usr/bin/env python
 
-from fastapi import FastAPI, status, Response, Request, Depends, Form, Query, HTTPException, Body
+from fastapi import FastAPI, status, Response, Request, Depends, Form, Query, HTTPException, Body, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
-
-from typing import Optional
+from typing import Optional, List
 from fastapi.middleware.cors import CORSMiddleware
 
 import re
-import threading
-import socket
-
 import sublist3r
 import core.config as cfg
+from functions.ScanPort import portscan
 
 from schemas.token import Token as SchemaToken
 from schemas.user import User as SchemaUser, UserCreate as SchemaUserCreate, UserLogin as SchemaUserLogin
-import models.user as modelUser
+
+import models.user as ModelUser
+import models.domain as ModelDomain
+import models.subdomain as ModelSubdomain
+import models.port as ModelPort
+import models.associate_table as ModelAssociate
+
 import auth.auth as auth
 from db.db import SessionLocal, engine
+from functions.Validate import checkEngine, checkDomain
+from functions.domain_subdomain import add_sub_to_database, get_domain_like, get_id_domain, get_subdomains_and_filter, check_port_in_db, get_subdomains_port, add_port_to_exist_db_sub, add_sub_port_to_db, get_subdomains, scan_subdomains_port, filter_subdomain_port
 
-from typing import List
 from sqlalchemy.orm import Session
 
-modelUser.Base.metadata.create_all(bind=engine)
+ModelUser.Base.metadata.create_all(bind=engine)
+ModelDomain.Base.metadata.create_all(bind=engine)
+ModelSubdomain.Base.metadata.create_all(bind=engine)
+ModelAssociate.Base.metadata.create_all(bind=engine)
+ModelPort.Base.metadata.create_all(bind=engine)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/token")
 
@@ -41,41 +49,6 @@ app.add_middleware(
 app.mount("/public", StaticFiles(directory="build"), name="public")
 templates = Jinja2Templates(directory="build")
 
-# @app.middleware("http")
-# async def check_login(res: Request, call_next):
-#     response = await call_next(res)
-#     return response
-
-# @app.post("/api/sign-up", status_code=status.HTTP_201_CREATED)
-# async def createUser(res: Response, username: str = Form(...),
-#                      password: str = Form(...),
-#                      email: str = Form(...),
-#                      firstName: str = Form(...),
-#                      lastName: str = Form(...)):
-
-#     user = get_account_in_db(username)
-#     if not user == None:
-#         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username is existed")
-
-#     password = get_password_hash(password)
-
-#     new_user = User(username, email, password, firstName, lastName)
-#     new_user.save()
-
-#     token = new_user.generate_token()
-
-#     return {"status": True, "token":token}
-
-# @app.post("/api/sign-in", status_code=status.HTTP_200_OK)
-# async def login(res: Response, req: Request, form_data: OAuth2PasswordRequestForm = Depends()):
-#     user = get_account_in_db(form_data.username)
-#     if user == None:
-#         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Username or password wrong")
-#     if not verify_password(form_data.password, user.password):
-#         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Username or password wrong")
-#     token = user.generate_token()
-#     return {"status": True, "token": token}
-
 #====================================================================================================
 
 
@@ -88,13 +61,17 @@ def get_db():
 
 
 @app.get("/api/users", response_model=List[SchemaUser])
-def read_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
+def read_users(skip: int = 0,
+               limit: int = 100,
+               db: Session = Depends(get_db),
+               token: str = Depends(oauth2_scheme)):
     users = auth.get_users(db, skip, limit)
     return users
 
 
 @app.get("/api/users/me", response_model=SchemaUser)
-def read_user(token:str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+def read_user(token: str = Depends(oauth2_scheme),
+              db: Session = Depends(get_db)):
     user = auth.get_current_user(db, token=token)
     return user
 
@@ -112,67 +89,87 @@ def create_user(user: SchemaUserCreate, db: Session = Depends(get_db)):
     auth.create_user(db, user=user)
     return {"detail": "Sign Up successful"}
 
+
 def read_input(username: str, password: str):
     print(username)
 
+
 @app.post("/api/token", status_code=status.HTTP_200_OK)
-def login(res: Response, user: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    print(user)
+def login(res: Response,
+          user: OAuth2PasswordRequestForm = Depends(),
+          db: Session = Depends(get_db)):
+
     user = auth.authenticate_user(db, user.username, user.password)
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                             detail="Incorrect username or password",
                             headers={"WWW-Authenticate": "Bearer"})
-    token = auth.generate_token(data = {"user_id": user.id, "username": user.username})
+    token = auth.generate_token(data={
+        "user_id": user.id,
+        "username": user.username
+    })
     res.set_cookie(key="token", value=token['access_token'])
     res.headers['Authorization'] = "Bearer " + token['access_token']
     return {"detail": "Login success", "access_token": token['access_token']}
+
 
 #+====================================================================================================
 
 
 @app.get("/api/{domain}", status_code=status.HTTP_200_OK)
-async def check(res: Response,
+async def check(background_tasks: BackgroundTasks,
+                res: Response,
                 domain: str,
                 ports: Optional[str] = None,
                 bruteforce: Optional[bool] = False,
-                engines: Optional[str] = None, token: str = Depends(oauth2_scheme)):
+                engines: Optional[str] = None,
+                token: str = Depends(oauth2_scheme),
+                db: Session = Depends(get_db)):
     if checkDomain(domain) == False:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Please input invalid domain")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Please input invalid domain")
 
     if engines != None:
         if checkEngine(engines.split(',')) == False:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Bad request")
-
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail="Bad request")
+    result = []
     try:
-        subdomains = await scan(domain, ports, bruteforce, engines)
-    except:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Something error")
+        domain_exist = get_domain_like(db, domain)
+        if domain_exist:
+            if ports:
+                if check_port_in_db(db, ports, domain_exist):
+                    subdomains = get_subdomains_port(db, domain_exist.id,
+                                                     ports)
+                    result = filter_subdomain_port(subdomains, ports)
+                else:
+                    subdomains = get_subdomains(db, domain_exist.id)
+                    new_sub = await scan_subdomains_port(subdomains, ports)
+                    background_tasks.add_task(add_port_to_exist_db_sub, db,
+                                              domain_exist.id, ports, new_sub)
+                    result = filter_subdomain_port(new_sub, ports)
+            else:
+                subdomains = get_subdomains(db, domain_exist.id)
+                result = filter_subdomain_port(subdomains, None)
 
-    if ports:
-        ports = ports.split(',')
-        try:
-            pscan = portscan(subdomains, ports)
-            subListPort = await pscan.run()
-        except:
-            raise HTTPException(status_code=status.HTTP_408_REQUEST_TIMEOUT, detail="Request timeout")
-
-        if len(subListPort) > 0:
-            # writeFileExcel(subListPort)
-            return {"result": subListPort}
+            return {"result": result}
         else:
-            return {"result": []}
+            subdomains = await scan(domain, ports, bruteforce, engines)
+            result = filter_subdomain_port(subdomains, ports)
+            background_tasks.add_task(add_sub_to_database, db, domain,
+                                      subdomains)
+            if (len(subdomains) != 0):
+                if ports:
+                    subdomain_port = await scan_subdomains_port(
+                        subdomains, ports)
+                    result = filter_subdomain_port(subdomain_port, ports)
+                    background_tasks.add_task(add_sub_port_to_db, db,
+                                              subdomain_port, ports, domain)
 
-    if len(subdomains) == 0:
-        return {"result": []}
-    else:
-        new_subdomains = list(
-            map(lambda subdomain: {
-                "host": subdomain,
-                'port': None
-            }, subdomains))
-        # writeFileExcel(new_subdomains)
-        return {"result": new_subdomains}
+            return {"result": result}
+    except:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                            detail="Something error")
 
 
 async def scan(domain, port, bruteforce, engines):
@@ -185,60 +182,3 @@ async def scan(domain, port, bruteforce, engines):
                                 enable_bruteforce=bruteforce,
                                 engines=engines)
     return subdomains
-
-
-def checkDomain(domain):
-    domain_check = re.compile(
-        "^(http|https)?[a-zA-Z0-9]+([\-\.]{1}[a-zA-Z0-9]+)*\.[a-zA-Z]{2,}$")
-    if not domain_check.match(domain):
-        return False
-
-
-def checkEngine(engines):
-    print(engines)
-    listEngine = [
-        'baidu', 'yahoo', 'google', 'bing', 'ask', 'netcraft', 'dnsdumpster',
-        'virustotal', 'threatcrowd', 'ssl', 'passivedns'
-    ]
-    for n in engines:
-        if n not in listEngine:
-            return False
-
-
-class portscan():
-    def __init__(self, subdomains, ports):
-        self.subdomains = subdomains
-        self.ports = ports
-        self.lock = None
-
-    def port_scan(self, host, ports, sublistPort):
-        self.lock.acquire()
-        for port in ports:
-            try:
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.settimeout(2)
-                result = s.connect_ex((host, int(port)))
-                if result == 0:
-                    print({"Host": host, "Port": port})
-                    sublistPort.append({"host": host, "port": port})
-                s.close()
-            except Exception:
-                pass
-        self.lock.release()
-
-    async def run(self):
-        sublistPort = []
-        threads = list()
-
-        self.lock = threading.BoundedSemaphore(value=20)
-        for subdomain in self.subdomains:
-            t = threading.Thread(target=self.port_scan,
-                                 args=(subdomain, self.ports, sublistPort))
-            threads.append(t)
-            t.start()
-
-        for thread in threads:
-            thread.join(2)
-
-        # time.sleep(180)
-        return sublistPort
