@@ -1,7 +1,7 @@
 from db.db import Base
-from sqlalchemy import Column, String, DateTime, Integer
+from sqlalchemy import Column, String, DateTime, Integer, Float
 from sqlalchemy.orm import relationship
-import datetime
+import time
 from .associate_table import Domain_Port
 
 class Domain(Base):
@@ -9,7 +9,7 @@ class Domain(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     domain = Column(String, unique=True)
-    time = Column(DateTime, default=datetime.datetime.utcnow())
+    time = Column(Float, default=time.time())
 
-    subdomains = relationship("Subdomain", back_populates = "domain")
+    subdomains = relationship("Subdomain", back_populates = "domain", cascade="all, delete")
     ports = relationship("Port", secondary=Domain_Port, back_populates = "domains")

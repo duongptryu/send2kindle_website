@@ -9,6 +9,7 @@ from typing import Optional, List
 from fastapi.middleware.cors import CORSMiddleware
 
 import re
+import time
 import sublist3r
 import core.config as cfg
 from functions.ScanPort import portscan
@@ -137,39 +138,70 @@ async def check(background_tasks: BackgroundTasks,
     try:
         domain_exist = get_domain_like(db, domain)
         if domain_exist:
-            if ports:
-                if check_port_in_db(db, ports, domain_exist):
-                    subdomains = get_subdomains_port(db, domain_exist.id,
-                                                     ports)
-                    result = filter_subdomain_port(subdomains, ports)
+            if timeprocess(domain_exist) < 72800:
+                if ports:
+                    if check_port_in_db(db, ports, domain_exist):
+                        subdomains = get_subdomains_port(db, domain_exist.id,
+                                                        ports)
+                        result = filter_subdomain_port(subdomains, ports)
+                    else:
+                        background_tasks.add_task(scan_port_in_background, db, domain_exist, ports, background_tasks)
+                        return {"result": "Receiving request, we are processing , please comeback later"}
                 else:
                     subdomains = get_subdomains(db, domain_exist.id)
-                    new_sub = await scan_subdomains_port(subdomains, ports)
-                    background_tasks.add_task(add_port_to_exist_db_sub, db,
-                                              domain_exist.id, ports, new_sub)
-                    result = filter_subdomain_port(new_sub, ports)
+                    result = filter_subdomain_port(subdomains, None)
+
+                return {"result": result}
             else:
-                subdomains = get_subdomains(db, domain_exist.id)
-                result = filter_subdomain_port(subdomains, None)
-
-            return {"result": result}
+                background_tasks.add_task(scan_for_new_session, db, domain_exist, domain, ports, bruteforce, engines, background_tasks)
+                return {"result": "Receiving request, we are processing , please comeback later"}
+                # result = filter_subdomain_port(subdomains, ports)
+                # return {"result": result}
         else:
-            subdomains = await scan(domain, ports, bruteforce, engines)
-            result = filter_subdomain_port(subdomains, ports)
-            background_tasks.add_task(add_sub_to_database, db, domain,
-                                      subdomains)
-            if (len(subdomains) != 0):
-                if ports:
-                    subdomain_port = await scan_subdomains_port(
-                        subdomains, ports)
-                    result = filter_subdomain_port(subdomain_port, ports)
-                    background_tasks.add_task(add_sub_port_to_db, db,
-                                              subdomain_port, ports, domain)
-
-            return {"result": result}
+            background_tasks.add_task(scan_in_background, db, ports, domain, bruteforce, engines, background_tasks)
+            return {"result": "Receiving request, we are processing , please comeback later"}
     except:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                             detail="Something error")
+
+
+async def scan_for_new_session(db: Session, domain_exist, domain, ports, bruteforce, engines, background_tasks: BackgroundTasks):
+    db.delete(domain_exist)
+    db.commit()
+    subdomains = await scan(domain, ports, bruteforce, engines)
+    background_tasks.add_task(add_sub_to_database, db, domain, subdomains)
+    if ports:
+        subdomains = await scan_subdomains_port(subdomains, ports)
+        background_tasks.add_task(add_sub_port_to_db, db,
+                                    subdomains, ports, domain)
+
+
+async def scan_port_in_background(db: Session, domain_exist, ports, background_tasks: BackgroundTasks):
+    subdomains = get_subdomains(db, domain_exist.id)
+    new_sub = await scan_subdomains_port(subdomains, ports)
+    background_tasks.add_task(add_port_to_exist_db_sub, db,
+                            domain_exist.id, ports, new_sub)
+    
+
+
+async def scan_in_background(db: Session, ports, domain, bruteforce, engines, background_tasks: BackgroundTasks):
+    subdomains = await scan(domain, ports, bruteforce, engines)
+    result = filter_subdomain_port(subdomains, ports)
+    background_tasks.add_task(add_sub_to_database, db, domain,
+                                subdomains)
+    if (len(subdomains) != 0):
+        if ports:
+            subdomain_port = await scan_subdomains_port(
+                subdomains, ports)
+            result = filter_subdomain_port(subdomain_port, ports)
+            background_tasks.add_task(add_sub_port_to_db, db,
+                                        subdomain_port, ports, domain)
+
+
+
+
+
+
 
 
 async def scan(domain, port, bruteforce, engines):
@@ -182,3 +214,9 @@ async def scan(domain, port, bruteforce, engines):
                                 enable_bruteforce=bruteforce,
                                 engines=engines)
     return subdomains
+
+
+def timeprocess(domain_obj):
+    time_old = domain_obj.time
+    time_new = time.time()
+    return time_new - time_old
