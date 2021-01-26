@@ -12,7 +12,8 @@ import { Link } from "react-router-dom";
 
 const NavBar = (props) => {
   const [collapsed, setCollapsed] = useState(true);
-
+  const isLogin = props.isLogin;
+  const logout  = props.logout
   const toggleNavbar = () => setCollapsed(!collapsed);
   return (
     <div>
@@ -28,12 +29,31 @@ const NavBar = (props) => {
         <Collapse isOpen={!collapsed} navbar>
           <Nav navbar>
             <NavItem>
-            <NavLink>
-                <Link to="/sign-in/">Sign In</Link>
-              </NavLink>
-              <NavLink>
-                <Link to="/sign-up/">Sign Up</Link>
-              </NavLink>
+              {isLogin === true && (
+                <NavLink>
+                  <Link to="/" onClick = {logout}>Logout</Link>
+                </NavLink>
+              )}
+              {isLogin === true && (
+                <NavLink>
+                  <Link to="/user/me">Profile</Link>
+                </NavLink>
+              )}
+              {isLogin === false && (
+                <NavLink>
+                  <Link to="/sign-in/">Sign In</Link>
+                </NavLink>
+              )}
+              {isLogin === false && (
+                <NavLink>
+                  <Link to="/sign-up/">Sign Up</Link>
+                </NavLink>
+              )}
+              {isLogin === false && (
+                <NavLink>
+                  <Link to="/buy/">Buy Now</Link>
+                </NavLink>
+              )}
               <NavLink>
                 <Link to="/guide/">Guide</Link>
               </NavLink>

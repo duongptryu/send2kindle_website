@@ -190,7 +190,8 @@ class Main extends React.Component {
       return err.json()
     });
 
-    if (status_code === 408 || status_code === 503 || status_code=== 400) {
+    if (status_code === 408 || status_code === 503 || status_code=== 400 || status_code === 405 || status_code === 202) {
+      console.log(data)
       this.setState({
         check: {
           option: true,

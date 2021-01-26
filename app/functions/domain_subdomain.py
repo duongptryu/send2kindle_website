@@ -9,7 +9,6 @@ def add_sub_to_database(db: Session, domain: str, subdomain: List[str]):
     db_domain = ModelDomain.Domain(domain=domain)
     db.add(db_domain)
     db.commit()
-    db.refresh(db_domain)
     domain_id = get_id_domain(db, domain)
     db_sub = db.bulk_save_objects([
         ModelSubdomain.Subdomain(domain_id=domain_id, subdomain=sub)
@@ -73,6 +72,10 @@ def add_port_to_exist_db_sub(db: Session, domain_id, port, sub_port):
 
 def add_sub_port_to_db(db: Session, subdomains, port, domain):
     domain_obj = db.query(ModelDomain.Domain).filter(ModelDomain.Domain.domain == domain).first()
+    if domain_obj == None:
+        domain_obj = ModelDomain.Domain(domain=domain)
+        db.add(domain_obj)
+        db.commit()
     port_obj = ModelPort.Port(port=port)
     domain_obj.ports.append(port_obj)
     db.add(domain_obj)

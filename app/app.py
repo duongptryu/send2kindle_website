@@ -61,7 +61,9 @@ def get_db():
         db.close()
 
 
-@app.get("/api/users", response_model=List[SchemaUser])
+@app.get("/api/users",
+         response_model=List[SchemaUser],
+         status_code=status.HTTP_200_OK)
 def read_users(skip: int = 0,
                limit: int = 100,
                db: Session = Depends(get_db),
@@ -70,11 +72,17 @@ def read_users(skip: int = 0,
     return users
 
 
-@app.get("/api/users/me", response_model=SchemaUser)
+@app.get("/api/users/me")
 def read_user(token: str = Depends(oauth2_scheme),
               db: Session = Depends(get_db)):
     user = auth.get_current_user(db, token=token)
-    return user
+    return {
+        "username": user.username,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "email": user.email,
+        "vip_member": user.vip_member
+    }
 
 
 @app.post("/api/create-user", status_code=status.HTTP_201_CREATED)
@@ -89,10 +97,6 @@ def create_user(user: SchemaUserCreate, db: Session = Depends(get_db)):
                             detail="Username already registered")
     auth.create_user(db, user=user)
     return {"detail": "Sign Up successful"}
-
-
-def read_input(username: str, password: str):
-    print(username)
 
 
 @app.post("/api/token", status_code=status.HTTP_200_OK)
@@ -112,6 +116,22 @@ def login(res: Response,
     res.set_cookie(key="token", value=token['access_token'])
     res.headers['Authorization'] = "Bearer " + token['access_token']
     return {"detail": "Login success", "access_token": token['access_token']}
+
+
+@app.get("/api/update-vip-member")
+def update_user(token: str = Depends(oauth2_scheme),
+                db: Session = Depends(get_db)):
+    user = auth.get_current_user(db, token)
+    if user == None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="Please login")
+    if user.vip_member:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Already a vip member")
+    user.update_vip_member()
+    db.add(user)
+    db.commit()
+    return user
 
 
 #+====================================================================================================
@@ -134,74 +154,154 @@ async def check(background_tasks: BackgroundTasks,
         if checkEngine(engines.split(',')) == False:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                                 detail="Bad request")
+
+    user = auth.get_current_user(db, token)
+    if user == None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="Please login")
+    flag = user.vip_member
     result = []
-    try:
+    if flag:
+        # try:
         domain_exist = get_domain_like(db, domain)
         if domain_exist:
             if timeprocess(domain_exist) < 72800:
                 if ports:
                     if check_port_in_db(db, ports, domain_exist):
-                        subdomains = get_subdomains_port(db, domain_exist.id,
-                                                        ports)
+                        subdomains = get_subdomains_port(
+                            db, domain_exist.id, ports)
                         result = filter_subdomain_port(subdomains, ports)
                     else:
-                        background_tasks.add_task(scan_port_in_background, db, domain_exist, ports, background_tasks)
-                        return {"result": "Receiving request, we are processing , please comeback later"}
+                        background_tasks.add_task(scan_port_in_background, db,
+                                                  domain_exist, ports,
+                                                  background_tasks)
+                        res.status_code = status.HTTP_202_ACCEPTED
+                        return {
+                            "detail":
+                            "Receiving request, we are processing , please comeback later"
+                        }
                 else:
                     subdomains = get_subdomains(db, domain_exist.id)
                     result = filter_subdomain_port(subdomains, None)
-
                 return {"result": result}
             else:
-                background_tasks.add_task(scan_for_new_session, db, domain_exist, domain, ports, bruteforce, engines, background_tasks)
-                return {"result": "Receiving request, we are processing , please comeback later"}
+                background_tasks.add_task(scan_for_new_session, db,
+                                          domain_exist, domain, ports,
+                                          bruteforce, engines,
+                                          background_tasks)
+                res.status_code = status.HTTP_202_ACCEPTED
+                return {
+                    "detail":
+                    "Receiving request, we are processing , please comeback later"
+                }
                 # result = filter_subdomain_port(subdomains, ports)
                 # return {"result": result}
         else:
-            background_tasks.add_task(scan_in_background, db, ports, domain, bruteforce, engines, background_tasks)
-            return {"result": "Receiving request, we are processing , please comeback later"}
-    except:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                            detail="Something error")
+            background_tasks.add_task(scan_in_background, db, ports, domain,
+                                      bruteforce, engines, background_tasks)
+            res.status_code = status.HTTP_202_ACCEPTED
+            return {
+                "detail":
+                "Receiving request, we are processing , please comeback later"
+            }
+        # except:
+        # raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        #                     detail="Something error")
+    else:
+        if ports:
+            raise HTTPException(
+                status_code=status.HTTP_405_METHOD_NOT_ALLOWED,
+                detail="Just vip member allowed to use this feature")
+
+        domain_exist_in_user = check_domain_in_user_db(user, domain)
+        domain_exist = get_domain_like(db, domain)
+        if domain_exist_in_user:
+            if timeprocess(domain_exist) < 72800:
+                subdomains = get_subdomains(db, domain_exist.id)
+                result = filter_subdomain_port(subdomains, None)
+                return {"result": result}
+            else:
+                background_tasks.add_task(scan_for_new_session, db,
+                                          domain_exist, domain, ports,
+                                          bruteforce, engines,
+                                          background_tasks)
+                res.status_code = status.HTTP_202_ACCEPTED
+                return {
+                    "detail":
+                    "Receiving request, we are processing , please comeback later"
+                }
+        else:
+            if domain_exist:
+                background_tasks.add_task(scan_for_new_session, db,
+                                          domain_exist, domain, ports,
+                                          bruteforce, engines,
+                                          background_tasks)
+                background_tasks.add_task(add_domain_to_normal_account, db,
+                                          user, domain)
+                res.status_code = status.HTTP_202_ACCEPTED
+                return {
+                    "detail":
+                    "Receiving request, we are processing , please comeback later"
+                }
+            else:
+                background_tasks.add_task(scan_in_background, db, ports,
+                                          domain, bruteforce, engines,
+                                          background_tasks)
+                background_tasks.add_task(add_domain_to_normal_account, db,
+                                          user, domain)
+                res.status_code = status.HTTP_202_ACCEPTED
+                return {
+                    "detail":
+                    "Receiving request, we are processing , please comeback later"
+                }
 
 
-async def scan_for_new_session(db: Session, domain_exist, domain, ports, bruteforce, engines, background_tasks: BackgroundTasks):
+async def add_domain_to_normal_account(db: Session, user: ModelUser,
+                                       domain: str):
+    # import pdb; pdb.set_trace()
+    domain_exist = db.query(ModelDomain.Domain).filter(
+        ModelDomain.Domain.domain == domain).first()
+    user.domains.append(domain_exist)
+    db.add(user)
+    db.commit()
+
+
+def check_domain_in_user_db(user: ModelUser, domain_arg: str):
+    # import pdb; pdb.set_trace()
+    for domain in user.domains:
+        if domain_arg == domain.domain:
+            return domain
+    return None
+
+
+async def scan_for_new_session(db: Session, domain_exist, domain, ports,
+                               bruteforce, engines,
+                               background_tasks: BackgroundTasks):
     db.delete(domain_exist)
     db.commit()
-    subdomains = await scan(domain, ports, bruteforce, engines)
-    background_tasks.add_task(add_sub_to_database, db, domain, subdomains)
     if ports:
         subdomains = await scan_subdomains_port(subdomains, ports)
-        background_tasks.add_task(add_sub_port_to_db, db,
-                                    subdomains, ports, domain)
+        add_sub_port_to_db(db, subdomains, ports, domain)
+    else:
+        subdomains = await scan(domain, ports, bruteforce, engines)
+        add_sub_to_database(db, domain, subdomains)
 
 
-async def scan_port_in_background(db: Session, domain_exist, ports, background_tasks: BackgroundTasks):
+async def scan_port_in_background(db: Session, domain_exist, ports,
+                                  background_tasks: BackgroundTasks):
     subdomains = get_subdomains(db, domain_exist.id)
     new_sub = await scan_subdomains_port(subdomains, ports)
-    background_tasks.add_task(add_port_to_exist_db_sub, db,
-                            domain_exist.id, ports, new_sub)
-    
+    add_port_to_exist_db_sub(db, domain_exist.id, ports, new_sub)
 
 
-async def scan_in_background(db: Session, ports, domain, bruteforce, engines, background_tasks: BackgroundTasks):
+async def scan_in_background(db: Session, ports, domain, bruteforce, engines,
+                             background_tasks: BackgroundTasks):
     subdomains = await scan(domain, ports, bruteforce, engines)
-    result = filter_subdomain_port(subdomains, ports)
-    background_tasks.add_task(add_sub_to_database, db, domain,
-                                subdomains)
+    add_sub_to_database(db, domain, subdomains)
     if (len(subdomains) != 0):
         if ports:
-            subdomain_port = await scan_subdomains_port(
-                subdomains, ports)
-            result = filter_subdomain_port(subdomain_port, ports)
-            background_tasks.add_task(add_sub_port_to_db, db,
-                                        subdomain_port, ports, domain)
-
-
-
-
-
-
+            subdomain_port = await scan_subdomains_port(subdomains, ports)
+            add_sub_port_to_db(db, subdomain_port, ports, domain)
 
 
 async def scan(domain, port, bruteforce, engines):
